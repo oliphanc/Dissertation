@@ -2,23 +2,18 @@
 
 #Submit this script with: sbatch thefilename
 
-#SBATCH -J "C5-18B"     # Job Name
+#SBATCH -J "<name>"     # Job Name
 #SBATCH --time=72:00:00   # walltime (hh:mm:ss) -- Should be set to #Speedlines*5
 #SBATCH -C 'm12'   # features syntax (use quotes): -C 'a&b&c&d'
 #SBATCH --ntasks=128   # number of processor cores 
 #SBATCH --nodes=1 
 #SBATCH --mem-per-cpu=2G   # memory per CPU
-#SBATCH --mail-user=oliphanc@byu.edu   # email address
 #SBATCH --mail-type=BEGIN
 #SBATCH --mail-type=END
 #SBATCH --mail-type=FAIL
 #SBATCH --licenses=starccm_ccmpsuite:1
 
 
-
-##########################################################
-##### Do not need to change anything in this section #####
-##########################################################
  
 # Set the output permissions on files written from my script to be 0660 and directories to be 0770
 umask 0007

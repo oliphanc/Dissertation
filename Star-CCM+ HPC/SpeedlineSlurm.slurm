@@ -8,7 +8,6 @@
 #SBATCH --ntasks=128   # number of processor cores 
 #SBATCH --nodes=1 
 #SBATCH --mem-per-cpu=2G # memory per CPU
-#SBATCH --mail-user=oliphanc@byu.edu   # email address
 #SBATCH --mail-type=BEGIN
 #SBATCH --mail-type=END
 #SBATCH --mail-type=FAIL

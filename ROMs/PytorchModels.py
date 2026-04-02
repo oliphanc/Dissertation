@@ -161,3 +161,70 @@ class NNRegressor:
         with torch.no_grad():
             preds = self.model(torch.from_numpy(X).to(self.device)).cpu().numpy()
         return preds
+
+
+# -----------------------------------------------------------------------------
+# 3. Concurrent AutoEncoder + NNRegressor training
+# -----------------------------------------------------------------------------
+
+def train_concurrent(ae, nn_reg, X, Y, ae_weight=1.0, nn_weight=1.0):
+    """
+    Jointly train an AutoEncoder and NNRegressor in a single optimisation loop.
+
+    The combined loss is:
+        ae_weight * ||decoder(encoder(y)) - y||² + nn_weight * ||nn(x) - encoder(y)||²
+
+    AE training hyper-parameters (epochs, batch_size, lr) are used for the
+    shared loop; NNRegressor's own settings are ignored.
+
+    Returns
+    -------
+    Y_reduced : np.ndarray  — encoded training data (latent representations)
+    """
+    Y = np.asarray(Y, dtype=np.float64)
+    X = np.asarray(X, dtype=np.float64)
+    n_samples, n_features = Y.shape
+
+    ae._build_networks(n_features)
+    nn_reg._build_model(X.shape[1], ae.n_components)
+    nn_reg.model = nn_reg.model.to(ae.device)
+
+    dataset = TensorDataset(torch.from_numpy(X), torch.from_numpy(Y))
+    loader = DataLoader(dataset, batch_size=ae.batch_size, shuffle=True)
+
+    params = (list(ae.encoder.parameters()) +
+              list(ae.decoder.parameters()) +
+              list(nn_reg.model.parameters()))
+    opt = torch.optim.Adam(params, lr=ae.lr)
+    mse = nn.MSELoss()
+
+    for epoch in range(ae.epochs):
+        total_ae, total_nn = 0.0, 0.0
+        for xb, yb in loader:
+            xb, yb = xb.to(ae.device), yb.to(ae.device)
+            opt.zero_grad()
+
+            z = ae.encoder(yb)
+            ae_loss = mse(ae.decoder(z), yb)
+            nn_loss = mse(nn_reg.model(xb), z)
+
+            (ae_weight * ae_loss + nn_weight * nn_loss).backward()
+            opt.step()
+            total_ae += ae_loss.item()
+            total_nn += nn_loss.item()
+
+        if ae.verbose and (epoch % (ae.epochs // 10) == 0):
+            print(f"Concurrent epoch {epoch:4d} — "
+                  f"AE: {total_ae / len(loader):.6e}  "
+                  f"NN: {total_nn / len(loader):.6e}")
+
+    ae.encoder.eval()
+    ae.decoder.eval()
+    nn_reg.model.eval()
+
+    with torch.no_grad():
+        Y_reduced = ae.encoder(
+            torch.from_numpy(Y).to(ae.device)
+        ).cpu().numpy()
+
+    return Y_reduced

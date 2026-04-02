@@ -11,7 +11,7 @@ from sklearn.decomposition import PCA
 from sklearn.manifold import Isomap, LocallyLinearEmbedding
 from sklearn.neighbors import KDTree
 
-from PytorchModels import AutoEncoder, NNRegressor
+from PytorchModels import AutoEncoder, NNRegressor, train_concurrent
 
 @njit
 def MinObjective(w, y_neighbors, ystar, eps, gamma):
@@ -37,7 +37,8 @@ class ReducedOrderModel:
     def __init__(self, n_components, method='PCA', 
                  regressor = GaussianProcessRegressor(), 
                  k_neighbors=5, epsilon=0.01, k_penalty=4,
-                 ae_kwargs=None, nn_kwargs=None):
+                 ae_kwargs=None, nn_kwargs=None,
+                 ae_weight=1.0, nn_weight=1.0):
         """
         Initialize the reduced-order model with a chosen dimensionality reduction method.
         :param n_components: Number of components for dimensionality reduction
@@ -48,12 +49,16 @@ class ReducedOrderModel:
         :param k_penalty: Exponent for distance-based penalty term in weight calculation
         :param ae_kwargs: Keyword arguments for AutoEncoder if method is 'AE'
         :param nn_kwargs: Keyword arguments for NNRegressor if method is 'NN'
+        :param ae_weight: Loss weight for AE reconstruction during concurrent AE+NN training
+        :param nn_weight: Loss weight for NN regression during concurrent AE+NN training
         """
         self.n_components = n_components
         self.method = method.upper()
         self.k_neighbors = k_neighbors
         self.epsilon = epsilon
         self.k_penalty = k_penalty
+        self.ae_weight = ae_weight
+        self.nn_weight = nn_weight
         self.scaler = StandardScaler()
 
         # ---------------------- Dimensionality reducer -----------------------
@@ -86,8 +91,15 @@ class ReducedOrderModel:
         :param Y: High-dimensional target values
         """
         Y_scaled = self.scaler.fit_transform(Y)
-        Y_reduced = self.reducer.fit_transform(Y_scaled)
-        self.regressor.fit(X, Y_reduced)
+
+        if self.method == 'AE' and isinstance(self.regressor, NNRegressor):
+            Y_reduced = train_concurrent(
+                self.reducer, self.regressor, X, Y_scaled,
+                ae_weight=self.ae_weight, nn_weight=self.nn_weight,
+            )
+        else:
+            Y_reduced = self.reducer.fit_transform(Y_scaled)
+            self.regressor.fit(X, Y_reduced)
         
         # Store data for backmapping
         if self.method == 'ISOMAP':
